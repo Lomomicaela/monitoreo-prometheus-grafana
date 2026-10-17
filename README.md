@@ -476,3 +476,18 @@ Al final del compose se declara una red propia de Docker (de tipo *bridge*, la c
 
 ---
 
+## Conclusión
+
+Las tres partes forman una cadena completa. `basedatos` guarda los datos y `exportador` los convierte en métricas (Parte 1). `medidor` mide los contenedores y `recolector` junta, cada 5 segundos, las métricas de todos los targets, incluida la aplicación que corre fuera de Docker gracias a `extra_hosts` (Parte 2). Finalmente `tablero` consulta a Prometheus y las muestra en un dashboard, mientras que la red `red_metricas` es lo que permite que los servicios se encuentren por nombre (Parte 3).
+
+Para comprobarlo se generó carga con el dashboard abierto (actualización automática cada 5 segundos y rango de tiempo *Last 5 minutes*): 1500 peticiones, 30 en simultáneo. Mientras la carga corría, el panel de tráfico subió de golpe y las conexiones a la base se movieron en sincronía con las peticiones, sin abrir ningún archivo. En la práctica de logs, en cambio, había que esperar a que terminara la carga, buscar el archivo y filtrarlo para recién entonces notar el pico.
+
+Ambas herramientas se complementan: las métricas sirven para **detectar y avisar al instante**, y los logs para **investigar el detalle después**. En un entorno de producción se usan las dos.
+
+Este compose está pensado para una práctica. En un entorno real convendría hacer algunos cambios:
+
+- Sacar las contraseñas del archivo (`.env` o *secrets*).
+- Agregar un volumen con nombre para los datos de MySQL.
+- Fijar la versión de todas las imágenes en lugar de usar `latest`.
+- Montar `config-prometheus.yml` con `:ro`, ya que el contenedor solo necesita leerlo.
+
