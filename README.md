@@ -363,3 +363,61 @@ seq 1 1500 | xargs -P 30 -I{} curl -s -o /dev/null http://127.0.0.1:8888/
 
 ---
 
+## Parte 2 — Recolección de métricas: `medidor` y `recolector`
+
+### El servicio `medidor`
+
+```yaml
+  medidor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    restart: always
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - red_metricas
+```
+
+`medidor` (cAdvisor) mide cuánta CPU, memoria, red y disco consume cada contenedor del host, y lo expone en el puerto 8080. De allí sale `container_cpu_usage_seconds_total`, la métrica usada en el panel de CPU.
+
+**Sintaxis YAML.** La imagen proviene de otro registro (`gcr.io`, el de Google, en lugar de Docker Hub) y tiene una **versión fija** (`v0.47.2`) en vez de `latest`, para que el comportamiento no cambie solo. Los volúmenes usan rutas absolutas del host, a diferencia del `./credenciales.cnf` de la Parte 1, que era relativo a la carpeta del compose.
+
+**Por qué monta rutas del host en solo lectura.** Un contenedor está aislado y, por sí solo, no puede ver qué consumen los demás. Para medirlos, cAdvisor necesita observar archivos del host: `/sys` (donde el kernel registra el consumo de recursos de cada grupo de procesos), `/var/lib/docker` (los datos de los contenedores), `/var/run` y `/dev/disk`. Todo se monta con `:ro` porque cAdvisor solo **observa**: así, aunque el contenedor tuviera una vulnerabilidad, no podría modificar archivos del host.
+
+**Puerto.** `medidor` no tiene sección `ports:`. Escucha en el 8080 únicamente dentro de la red de Docker, y Prometheus lo alcanza como `medidor:8080`. No se publica al host porque ninguna persona necesita entrar a él directamente.
+
+### El servicio `recolector`
+
+```yaml
+  recolector:
+    image: prom/prometheus:latest
+    restart: always
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config-prometheus.yml:/etc/prometheus/prometheus.yml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - red_metricas
+```
+
+`recolector` (Prometheus) es quien **recolecta** las métricas de forma activa: cada 5 segundos va a buscar ("scrapea") el endpoint `/metrics` de cada target y guarda los valores como series de tiempo. Eso mismo es lo que se ve al consultar la app con `curl`:
+
+![Respuesta de /metrics de la aplicación](imagenes/01-metrics-flask.png)
+
+Qué targets consulta y con qué frecuencia lo define `config-prometheus.yml`. En él, `scrape_interval: 5s` fija el intervalo y `scrape_configs` es una lista de *jobs*, cada uno con su `job_name` y una lista `static_configs` con sus `targets`. Hay cuatro: el propio Prometheus, los contenedores (`medidor:8080`), la base (`exportador:9104`) y la aplicación (`host.docker.internal:8888`). En la página **Status → Target health** se ve el estado de cada uno:
+
+![Targets de Prometheus en estado UP](imagenes/02-prometheus-targets.png)
+
+**Sintaxis YAML.** En `volumes`, el origen (`./config-prometheus.yml`) y el destino (`/etc/prometheus/prometheus.yml`) tienen nombres distintos: el archivo se llama de una forma en la carpeta del proyecto y de otra dentro del contenedor, que es donde Prometheus lo busca por defecto. El valor de `ports` va entre comillas y tiene el formato `puerto_del_host:puerto_del_contenedor`; las comillas evitan que YAML interprete los dos puntos como un `clave: valor`. Por último, `extra_hosts` es una lista de entradas `nombre:ip` que se agregan al archivo `/etc/hosts` del contenedor.
+
+**Qué puerto se publica y por qué.** Se publica el `9090:9090`, para poder abrir la interfaz web de Prometheus desde fuera de la red Docker y consultar métricas o revisar el estado de los targets. Es el único de esta parte que se expone al host.
+
+**Qué resuelve `extra_hosts` con `host.docker.internal`.** Tres de los targets son contenedores y se encuentran por nombre de servicio, pero la aplicación Flask corre **en el host**, fuera de Docker. Desde dentro de un contenedor, `localhost` apunta al propio contenedor y no al host, así que Prometheus no podría llegar a la app. Además, en Linux el nombre `host.docker.internal` no existe por defecto. La línea `"host.docker.internal:host-gateway"` lo crea: `host-gateway` es un valor especial que Docker reemplaza por la dirección IP del host. Con eso, el target `host.docker.internal:8888` funciona.
+
+---
+
