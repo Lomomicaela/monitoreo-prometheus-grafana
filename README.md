@@ -599,3 +599,22 @@ En este anexo se muestran, en el orden en que se realizaron, las capturas de tod
 
 ---
 
+## Evidencia en Git
+
+Este informe lo realicé de forma individual. Aun así, el historial del repositorio sigue la lógica de la consigna: cada parte se commiteó por separado, con un mensaje que explica qué se documentó y por qué se lo entendió de esa manera, y la introducción, la conclusión y el anexo quedaron en commits aparte. De ese modo se puede ver en el historial cómo se fue armando el informe, parte por parte.
+
+| # | Commit | Qué contiene | Qué idea central se explica |
+|---|---|---|---|
+| 1 | Introducción y código completo | Introducción, tabla de nombres y código de redespliegue (pasos 1 a 7) | La diferencia entre logs y métricas, y por qué la app Flask corre en el host y no en el compose |
+| 2 | Parte 1 | `basedatos` y `exportador` | Contraseña por variable de entorno, volumen anónimo, credenciales en solo lectura y límite de `depends_on` |
+| 3 | Parte 2 | `medidor` y `recolector` | Scraping cada 5 segundos, rutas del host montadas en `:ro` y `extra_hosts` con `host-gateway` |
+| 4 | Parte 3 | `tablero` y `red_metricas` | DNS interno de Docker, resolución por nombre de servicio y la excepción de la app Flask |
+| 5 | Conclusión | Comparación entre logs y métricas, resultado de la carga y mejoras para producción | Métricas para detectar al instante, logs para investigar el detalle |
+| 6 | Anexo | Anexo con las Figuras 1 a 22 y sus epígrafes, y la carpeta `imagenes/` con las capturas | Evidencia visual de cada paso, desde la instalación hasta el dashboard |
+| 7 | Evidencia en Git | Esta sección | Cómo está organizado el historial |
+
+Para ver el historial completo:
+
+```bash
+git log --oneline
+```
