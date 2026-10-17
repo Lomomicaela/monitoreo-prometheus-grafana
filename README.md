@@ -421,3 +421,58 @@ Qué targets consulta y con qué frecuencia lo define `config-prometheus.yml`. E
 
 ---
 
+## Parte 3 — Visualización y topología: `tablero` y la red `red_metricas`
+
+### El servicio `tablero`
+
+```yaml
+  tablero:
+    image: grafana/grafana:13.2.2
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=GrafanaClave_26
+    depends_on:
+      - recolector
+    networks:
+      - red_metricas
+```
+
+`tablero` (Grafana) no recolecta nada por sí mismo: es una capa de visualización que se conecta a Prometheus y arma paneles con las métricas que este ya guardó. Se accede por el puerto 3000, con el usuario `admin` y la contraseña definida en `GF_SECURITY_ADMIN_PASSWORD`.
+
+![Pantalla de inicio de sesión de Grafana](imagenes/03-grafana-login.png)
+
+**Sintaxis YAML.** La versión de la imagen está fija en 13.2.2 porque la interfaz de Grafana cambia entre versiones y los pasos de este informe corresponden a esa. Además, `environment` está escrito acá como **lista** (`- CLAVE=valor`), mientras que en `basedatos` era un **bloque** (`CLAVE: valor`). Compose acepta ambas formas y significan lo mismo.
+
+**Por qué Grafana depende de Prometheus.** Sin su fuente de datos, un dashboard no tiene nada que mostrar. Con `depends_on: - recolector`, Compose arranca Prometheus primero. Igual que en la Parte 1, esto solo controla el orden de arranque y no garantiza que Prometheus ya esté listo para responder consultas.
+
+Una vez dentro, se agrega Prometheus como fuente de datos con la URL `http://recolector:9090`. Se usa el **nombre del servicio** y no `localhost`, porque Grafana y Prometheus están en contenedores distintos y `localhost` apuntaría al propio contenedor de Grafana.
+
+![Data source de Prometheus en Grafana](imagenes/04-grafana-datasource.png)
+
+Con la fuente conectada se crean los paneles con las consultas del paso 6 (el procedimiento detallado, clic por clic, está en ese mismo paso):
+
+![Editor de paneles de Grafana](imagenes/05-grafana-panel.png)
+
+### La red `red_metricas`
+
+```yaml
+networks:
+  red_metricas:
+```
+
+Al final del compose se declara una red propia de Docker (de tipo *bridge*, la configuración por defecto), a la que los cinco servicios se conectan con su lista `networks: - red_metricas`. En YAML, `red_metricas:` sin nada indentado debajo es una clave con valor vacío, y Compose aplica la configuración por defecto. Es un bloque de nivel superior, al mismo nivel que `services:`. Como el proyecto está en la carpeta `metricas`, Compose le antepone ese nombre y en el sistema la red aparece como `metricas_red_metricas`.
+
+**Cómo permite resolver por nombre.** En una red definida por el usuario, Docker incluye un servidor DNS interno: cada contenedor se registra con el nombre de su servicio, de modo que los demás pueden encontrarlo sin conocer su IP, que puede cambiar cada vez que se recrea. Entre los cinco servicios esto se usa en tres lugares:
+
+| Quién se conecta | A quién | Dónde está configurado |
+|---|---|---|
+| `exportador` | `basedatos:3306` | `credenciales.cnf` (`host=basedatos`) |
+| `recolector` | `medidor:8080` y `exportador:9104` | `config-prometheus.yml` |
+| `tablero` | `recolector:9090` | Data source cargado en la interfaz de Grafana |
+
+**La excepción: la aplicación Flask.** Como corre en el host y no dentro de la red, no puede resolver `basedatos` por nombre. Por eso, en el paso 4, se consulta la IP real del contenedor con `docker inspect` y se reemplaza dentro de `app.py` con `sed`. Es el camino inverso al de `extra_hosts`, que permite que Prometheus llegue hasta la app.
+
+---
+
