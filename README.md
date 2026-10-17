@@ -313,3 +313,53 @@ seq 1 1500 | xargs -P 30 -I{} curl -s -o /dev/null http://127.0.0.1:8888/
 
 ---
 
+# Explicación del `docker-compose.yml`
+
+## Parte 1 — Persistencia de datos: `basedatos` y `exportador`
+
+### El servicio `basedatos`
+
+```yaml
+  basedatos:
+    image: mysql:latest
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ClaveDb_2026
+    networks:
+      - red_metricas
+```
+
+`basedatos` es el servidor MySQL donde se guarda la información de la aplicación.
+
+**Sintaxis YAML.** YAML no usa llaves ni punto y coma: la estructura se define con la **indentación** (aquí, dos espacios), y lo que está más adentro pertenece a lo que tiene arriba. `services:` agrupa todos los servicios y cada uno es una clave dentro de él. Los pares `clave: valor` son el elemento básico (`image: mysql:latest`), `environment` es un bloque anidado con las variables, y las **listas** llevan un guion al comienzo de cada elemento (`- red_metricas`). `restart: always` indica que Docker debe volver a levantar el contenedor si se cae o si se reinicia la máquina.
+
+**Por qué la contraseña va por variable de entorno.** La imagen oficial de MySQL lee `MYSQL_ROOT_PASSWORD` la primera vez que arranca, para crear el usuario `root` con esa clave. Pasarla como variable evita escribirla dentro de la imagen y permite cambiarla sin reconstruirla: la configuración queda separada del software. En este laboratorio la contraseña queda en texto plano dentro del compose; en un entorno real se guardaría en un archivo `.env` fuera del repositorio o en los *secrets* de Docker.
+
+**Sobre la persistencia.** El compose no declara un volumen con nombre para `/var/lib/mysql`. La imagen crea por su cuenta un volumen anónimo, de modo que los datos sobreviven a un reinicio del contenedor, pero si el contenedor se elimina y se crea de nuevo se pierde el acceso a ellos. Por eso, al redesplegar el stack desde cero, hay que repetir la creación de la base (paso 4).
+
+### El servicio `exportador`
+
+```yaml
+  exportador:
+    image: prom/mysqld-exporter:latest
+    restart: always
+    volumes:
+      - ./credenciales.cnf:/.my.cnf:ro
+    command:
+      - --config.my-cnf=/.my.cnf
+    depends_on:
+      - basedatos
+    networks:
+      - red_metricas
+```
+
+`exportador` se conecta a MySQL, lee sus estadísticas internas (conexiones, consultas, estado del motor) y las publica en formato Prometheus en el puerto 9104. Gracias a él existe la métrica `mysql_global_status_threads_connected` que se grafica en el dashboard.
+
+**Sintaxis YAML.** En `volumes`, cada elemento de la lista sigue el formato `origen:destino:modo`: el archivo `./credenciales.cnf` de la carpeta del proyecto (ruta relativa al compose) se monta como `/.my.cnf` dentro del contenedor. `command` es una lista con los argumentos que recibe el programa al iniciar, y `depends_on` es una lista de los servicios de los que este depende.
+
+**Para qué se monta el archivo de credenciales en solo lectura.** El sufijo `:ro` significa *read-only*. El exporter únicamente necesita leer el usuario y la contraseña, nunca modificarlos, así que con `:ro` el contenedor no puede alterar ni borrar el archivo del host. Además, entregar las credenciales mediante un archivo evita ponerlas en la línea de comandos, donde cualquiera podría verlas con `docker inspect`. El archivo contiene `host=basedatos`: el exporter localiza la base por el **nombre del servicio**, gracias a la red común (Parte 3).
+
+**La relación de dependencia.** `depends_on: - basedatos` hace que Compose arranque `basedatos` antes que `exportador`, lo cual tiene sentido porque el exporter no tiene nada que leer si la base no existe. Pero conviene entender su límite: solo garantiza el **orden de arranque**, no que MySQL esté listo para aceptar conexiones, algo que tarda unos segundos. Por eso, en el paso 4, se espera explícitamente con `mysqladmin ping` antes de crear la base.
+
+---
+
