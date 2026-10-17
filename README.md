@@ -491,3 +491,111 @@ Este compose está pensado para una práctica. En un entorno real convendría ha
 - Fijar la versión de todas las imágenes en lugar de usar `latest`.
 - Montar `config-prometheus.yml` con `:ro`, ya que el contenedor solo necesita leerlo.
 
+## Anexo — Capturas de pantalla
+
+En este anexo se muestran, en el orden en que se realizaron, las capturas de todo el procedimiento.
+
+### A. Preparación y archivos de configuración (pasos 1 y 2)
+
+![Figura 1](imagenes/anexo-01-instalacion-herramientas.png)
+
+**Figura 1.** Instalación de `docker-compose`, `python3-pip` y `git`, e inicio de la instalación de las librerías de Python.
+
+![Figura 2](imagenes/anexo-02-instalacion-librerias-python.png)
+
+**Figura 2.** Final de la instalación de `flask`, `mysql-connector-python` y `prometheus-flask-exporter`.
+
+![Figura 3](imagenes/anexo-03-credenciales-y-config-prometheus.png)
+
+**Figura 3.** Creación de la carpeta `metricas` y de los archivos `credenciales.cnf` y `config-prometheus.yml`.
+
+![Figura 4](imagenes/anexo-04-docker-compose-parte-1.png)
+
+**Figura 4.** Creación del `docker-compose.yml`: servicios `basedatos`, `exportador` y `medidor`.
+
+![Figura 5](imagenes/anexo-05-docker-compose-parte-2.png)
+
+**Figura 5.** Continuación del `docker-compose.yml`: servicio `medidor` y cierre del archivo.
+
+### B. Despliegue de los contenedores (paso 3)
+
+![Figura 6](imagenes/anexo-06-docker-compose-up.png)
+
+**Figura 6.** `docker-compose up -d`: creación de la red y descarga de las imágenes.
+
+![Figura 7](imagenes/anexo-07-docker-compose-ps.png)
+
+**Figura 7.** Los cinco servicios creados y `docker-compose ps` con todos en estado `Up`.
+
+### C. Aplicación que se monitorea (paso 4)
+
+![Figura 8](imagenes/anexo-08-base-escuela-y-clonado.png)
+
+**Figura 8.** Espera a MySQL, creación de la base `escuela` y de la tabla `alumnos` con datos de prueba, y clonado del repositorio de la app.
+
+![Figura 9](imagenes/anexo-09-ajustes-app-sed.png)
+
+**Figura 9.** Reemplazo con `sed` de la IP, la contraseña y la base en `app.py`, y arranque de la app con `nohup`.
+
+![Figura 10](imagenes/anexo-10-app-en-segundo-plano.png)
+
+**Figura 10.** Configuración `DB_CONFIG` resultante y la app corriendo en segundo plano.
+
+### D. Verificación de las fuentes de métricas (paso 5)
+
+![Figura 11](imagenes/anexo-11-metrics-flask.png)
+
+**Figura 11.** Respuesta de `http://127.0.0.1:8888/metrics`, con las métricas que publica la app.
+
+![Figura 12](imagenes/anexo-12-prometheus-targets.png)
+
+**Figura 12.** Prometheus, **Status → Target health**: los cuatro targets (`app-alumnos`, `base-de-datos`, `contenedores` y `recolector`) en estado UP.
+
+### E. Configuración de Grafana (paso 6)
+
+![Figura 13](imagenes/anexo-13-killercoda-puerto-9090.png)
+
+**Figura 13.** Acceso al puerto 9090 (Prometheus) desde la página de puertos de Killercoda.
+
+![Figura 14](imagenes/anexo-14-killercoda-puerto-3000.png)
+
+**Figura 14.** Acceso al puerto 3000 (Grafana) desde la misma página.
+
+![Figura 15](imagenes/anexo-15-grafana-login.png)
+
+**Figura 15.** Pantalla de inicio de sesión de Grafana con el usuario `admin`.
+
+![Figura 16](imagenes/anexo-16-grafana-datasource.png)
+
+**Figura 16.** Data source de Prometheus con la URL `http://recolector:9090`.
+
+![Figura 17](imagenes/anexo-17-panel-trafico.png)
+
+**Figura 17.** Panel de tráfico: consulta `rate(flask_http_request_duration_seconds_count[1m])` en modo **Code**.
+
+![Figura 18](imagenes/anexo-18-panel-conexiones.png)
+
+**Figura 18.** Panel de conexiones: consulta `mysql_global_status_threads_connected`.
+
+![Figura 19](imagenes/anexo-19-id-contenedor-mysql.png)
+
+**Figura 19.** ID del contenedor de MySQL obtenido con `docker ps -qf "name=basedatos"`.
+
+![Figura 20](imagenes/anexo-20-panel-cpu-consulta.png)
+
+**Figura 20.** Panel de CPU de la base con la consulta filtrada por el ID del contenedor.
+
+![Figura 21](imagenes/anexo-21-panel-cpu-grafico.png)
+
+**Figura 21.** Gráfico de CPU del contenedor de MySQL medido por cAdvisor (`job="contenedores"`).
+
+### F. Prueba de carga (paso 7)
+
+![Figura 22](imagenes/anexo-22-generar-carga.png)
+
+**Figura 22.** Comando `seq 1 1500 | xargs -P 30 ...` que genera la carga sobre la app.
+
+---
+
+---
+
